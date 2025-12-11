@@ -1,0 +1,2 @@
+slimvdb:
+	@make -C ../../

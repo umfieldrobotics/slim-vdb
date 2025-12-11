@@ -1,0 +1,27 @@
+cff-version: 1.0
+preferred-citation:
+  title: "SLIM-VDB: A Real-Time 3D Probabilistic Semantic Mapping Framework"
+  doi: "TBD"
+  year: "2025"
+  type: article
+  journal: "Robotics and Automation Letters"
+  url: "TBD"
+  authors:
+    - family-names: Sheppard
+      given-names: Anja
+    - family-names: Ewen
+      given-names: Parker
+    - family-names: Wilson
+      given-names: Joey
+    - family-names: Sethuraman
+      given-names: Advaith V.
+    - family-names: Adewole
+      given-names: Benard
+    - family-names: Li
+      given-names: Anran
+    - family-names: Chen
+      given-names: Yuzhen
+    - family-names: Vasudevan
+      given-names: Ram
+    - family-names: Skinner
+      given-names: Katherine A.
