@@ -32,25 +32,6 @@ show-credit: false
 
 # Disable the footer by just setting the above false AND making the below blank
 footer:
-  connections-pre: # This prefixes the connections section at the botom.
-  connections-post: Socials
-  connections:
-    twitter: https://www.twitter.com/BuildingAtom
-    github:  https://github.com/BuildingAtom
-  related-sites:
-    sites:
-      - text: Base Example
-        href: /project-pages/
-        icon: bi-box-arrow-left
-        icon-library: bootstrap-icons
-      - text: SEL Map Example
-        href: /project-pages/sel_map
-        icon: bi-map
-        icon-library: bootstrap-icons
-      - text: ARMOUR Example
-        href: /project-pages/armour-dev
-        icon: bi-bezier2
-        icon-library: bootstrap-icons
 
 
 # Only leave the icon libraries you want to use enabled.
