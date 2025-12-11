@@ -28,7 +28,7 @@ credit:
     built by Adam Li / [@BuildingAtom](https://www.github.com/BuildingAtom)
 
 # Hide the credits in the footer by setting this false.
-show-credit: true
+show-credit: false
 
 # Disable the footer by just setting the above false AND making the below blank
 footer:

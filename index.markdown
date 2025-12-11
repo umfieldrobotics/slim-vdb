@@ -61,8 +61,8 @@ links:
 <!-- BEGIN OVERVIEW VIDEOS -->
 <div class="fullwidth">
   {% include util/video
-    content="assets/mainvid_compressed.mp4"
-    poster="assets/thumb/mainvid_compressed.png"
+    content="/assets/mainvid_compressed.mp4"
+    poster="/assets/thumb/mainvid_compressed.png"
     autoplay-on-load=true
     preload="none"
     muted=true
