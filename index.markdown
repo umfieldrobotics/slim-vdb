@@ -42,7 +42,7 @@ links:
   - icon: arxiv
     icon-library: simpleicons
     text: ArXiv
-    url: https://arxiv.org/
+    url: https://arxiv.org/abs/2512.12945
   - icon: github
     icon-library: simpleicons
     text: Code
