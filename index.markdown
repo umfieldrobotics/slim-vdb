@@ -113,16 +113,16 @@ Our key contributions are:
 This project was developed in the [Field Robotics Group](https://fieldrobotics.engin.umich.edu/) at the University of Michigan - Ann Arbor.
 
 ```bibtex
-@article{sheppard2025slimvdb,
+@article{sheppard2026slimvdb,
   author         = {Sheppard, Anja and Ewen, Parker and Wilson, Joey and Sethuraman, Advaith V. and Adewole, Benard and Li, Anran and Chen, Yuzhen and Vasudevan, Ram and Skinner, Katherine A.},
   title          = {SLIM-VDB: A Real-Time 3D Probabilistic Semantic Mapping Framework},
-  journal        = {Robotics Automation and Letters},
+  journal        = {IEEE Robotics Automation and Letters},
   volume         = {TBD},
-  year           = {2025},
+  year           = {2026},
   number         = {TBD},
   article-number = {TBD},
-  url            = {TBD},
-  doi            = {TBD}
+  url            = {https://ieeexplore.ieee.org/document/11344775},
+  doi            = {10.1109/LRA.2026.3652875}
 }
 ```
 </div>
