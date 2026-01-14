@@ -30,6 +30,7 @@ prune_interval: -1
 # Reconstruction
 fill_holes: False
 min_weight: 10.0
+p_threshold: 0.1
 
 # Kitti
 apply_pose: True

@@ -1,6 +1,6 @@
 # MIT License
 #
-# Copyright (c) 2024 Anja Sheppard, University of Michigan
+# Copyright (c) 2025 Anja Sheppard, University of Michigan
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -20,40 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# SLIMVDB
-voxel_size: 0.05
-sdf_trunc: 0.1
-space_carving: False
-prune_interval: 10
-
-# Reconstruction
-fill_holes: True
-min_weight: 20.0
-p_threshold: 0.1
-
-# SceneNet
-apply_pose: True
-preprocess: True
-min_range: 0.1
-max_range: 10.0
-rgbd: True
-realtime_segmentation: False
-render_img_width: 320
-render_img_height: 240
-
-# Colors for Labels
-color_map:
-  0: [0, 0, 0]
-  1: [0, 0, 255]
-  2: [233, 89, 48]
-  3: [0, 218, 0]
-  4: [149, 0, 240]
-  5: [222, 241, 24]
-  6: [255, 206, 206]
-  7: [0, 224, 229]
-  8: [106, 136, 204]
-  9: [117, 29, 41]
-  10: [240, 35, 235]
-  11: [0, 167, 156]
-  12: [249, 139, 0]
-  13: [225, 229, 194]
+file(READ ${INPUT_FILE} CONTENTS)
+string(REPLACE "@LANGUAGE_STR@" "${LANGUAGE_STR}" CONTENTS "${CONTENTS}")
+string(REPLACE "@SLIMVDB_NCLASSES@" "${SLIMVDB_NCLASSES}" CONTENTS "${CONTENTS}")
+file(WRITE ${OUTPUT_FILE} "${CONTENTS}")

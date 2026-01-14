@@ -227,12 +227,12 @@ std::vector<Eigen::Matrix4d> GetGTPoses(const fs::path& poses_file, const fs::pa
 }  // namespace 
 namespace datasets {
 
-RealWorldDataset::RealWorldDataset(const std::string& realworld_root_dir,
+template <slimvdb::Language L>
+RealWorldDataset<L>::RealWorldDataset(const std::string& realworld_root_dir,
                            const std::string& sequence,
                            int n_scans,
                            bool rgbd) {
     rgbd_ = rgbd;
-    // TODO: to be completed
     auto realworld_root_dir_ = fs::absolute(fs::path(realworld_root_dir));
     auto realworld_sequence_dir = fs::absolute(fs::path(realworld_root_dir));
 
@@ -242,7 +242,8 @@ RealWorldDataset::RealWorldDataset(const std::string& realworld_root_dir,
     scan_files_ = GetDepthFiles(fs::absolute(realworld_sequence_dir / "depth/"), n_scans);
 }
 
-RealWorldDataset::RealWorldDataset(const std::string& realworld_root_dir,
+template <slimvdb::Language L>
+RealWorldDataset<L>::RealWorldDataset(const std::string& realworld_root_dir,
                            const std::string& sequence,
                            int n_scans,
                            bool apply_pose,
@@ -266,11 +267,16 @@ RealWorldDataset::RealWorldDataset(const std::string& realworld_root_dir,
     const fs::path& calib_file = fs::absolute(realworld_sequence_dir_ / "intrinsics.txt");
     if(rgbd_) {
         depth_files_ = GetDepthFiles(fs::absolute(realworld_sequence_dir_ / "depth/"), n_scans);
-        if (realtime_segmentation_) {
-            img_files_ = GetImgFiles(fs::absolute(realworld_sequence_dir_ / "rgb/"), n_scans);
+        if constexpr (L == slimvdb::CLOSED) {
+            if (realtime_segmentation_) {
+                img_files_ = GetImgFiles(fs::absolute(realworld_sequence_dir_ / "rgb/"), n_scans);
+            }
+            else {
+                label_files_ = GetImgFiles(fs::absolute(realworld_sequence_dir_ / "prediction/"), n_scans);
+            }
         }
         else {
-            label_files_ = GetImgFiles(fs::absolute(realworld_sequence_dir_ / "prediction/"), n_scans);
+            std::cerr << "ERROR: No implementation for open-set semantics in RealWorld." << "\n";
         }
     }
     else {
@@ -323,7 +329,8 @@ RealWorldDataset::RealWorldDataset(const std::string& realworld_root_dir,
     }
 }
 
-std::pair<cv::Mat, std::vector<int>> RealWorldDataset::RunInference(const std::string& rgb_path, const std::string& depth_path) const {
+template <slimvdb::Language L>
+std::pair<cv::Mat, std::vector<int>> RealWorldDataset<L>::RunInference(const std::string& rgb_path, const std::string& depth_path) const {
     // Load and preprocess RGB + depth
     cv::Mat img_mat = cv::imread(rgb_path, cv::IMREAD_COLOR);
     cv::cvtColor(img_mat, img_mat, cv::COLOR_BGR2RGB);
@@ -375,7 +382,8 @@ std::pair<cv::Mat, std::vector<int>> RealWorldDataset::RunInference(const std::s
     return {depth_mat, label_data};
 }
 
-std::tuple<std::vector<Eigen::Vector3d>, std::vector<uint32_t>, Eigen::Matrix4d> RealWorldDataset::operator[](int idx) const {
+template <slimvdb::Language L>
+std::tuple<std::vector<Eigen::Vector3d>, typename RealWorldDataset<L>::SemanticLabels, Eigen::Matrix4d> RealWorldDataset<L>::operator[](int idx) const {
     if (rgbd_) {
         auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -402,4 +410,7 @@ std::tuple<std::vector<Eigen::Vector3d>, std::vector<uint32_t>, Eigen::Matrix4d>
         exit(0);
     }
 }
+
+template class RealWorldDataset<slimvdb::Language::CLOSED>;
+
 }  // namespace datasets

@@ -78,6 +78,24 @@ std::vector<std::string> GetImgFiles(const fs::path& img_path, int n_scans) {
     return label_files;
 }
 
+std::vector<std::string> GetBinLabelFiles(const fs::path& label_path, int n_scans) {
+    std::vector<std::string> label_files;
+    for (const auto& entry : fs::directory_iterator(label_path)) {
+        if (entry.path().extension() == ".bin") {
+            label_files.emplace_back(entry.path().string());
+        }
+    }
+    if (label_files.empty()) {
+        std::cerr << label_path << "path doesn't have any .bin" << std::endl;
+        exit(1);
+    }
+    std::sort(label_files.begin(), label_files.end());
+    if (n_scans > 0) {
+        label_files.erase(label_files.begin() + n_scans, label_files.end());
+    }
+    return label_files;
+}
+
 std::tuple<std::vector<Eigen::Vector3d>, std::vector<uint32_t>> ReadSceneNetDepthAndLabels(const std::string& depth_path, const std::string& label_path, float fx, float fy, float cx, float cy, float min_range, float max_range) {
     // Read depth and label
     cv::Mat depth_mat = cv::imread(depth_path, cv::IMREAD_UNCHANGED);
@@ -132,6 +150,69 @@ std::tuple<std::vector<Eigen::Vector3d>, std::vector<uint32_t>> ReadSceneNetDept
         }
     }
 
+    open3d::geometry::PointCloud pc = open3d::geometry::PointCloud(pc_points);
+    std::vector<Eigen::Vector3d> points = pc.points_;
+
+    return std::make_tuple(points, labels);
+}
+
+std::tuple<std::vector<Eigen::Vector3d>, std::vector<std::vector<float>>> ReadSceneNetDepthAndBinLabels(const std::string& depth_path, const std::string& label_path, float fx, float fy, float cx, float cy, float min_range, float max_range) {
+    // Read depth file and label from a binary file which has image row x col x vector data
+    cv::Mat depth_mat = cv::imread(depth_path, cv::IMREAD_UNCHANGED);
+    std::ifstream file(label_path, std::ios::binary);
+
+    // Read binary header
+    int rows, cols, vec_len;
+    file.read(reinterpret_cast<char*>(&rows), sizeof(rows));
+    file.read(reinterpret_cast<char*>(&cols), sizeof(cols));
+    file.read(reinterpret_cast<char*>(&vec_len), sizeof(vec_len));
+
+    // Convert cv Mat to vector
+    depth_mat.convertTo(depth_mat, CV_32F, 1.0f / 1000.0f); // Convert mm to meters
+    std::vector<float> depth_data(depth_mat.ptr<float>(), depth_mat.ptr<float>() + depth_mat.total());
+
+    std::vector<std::vector<float>> label_data;
+    label_data.reserve(rows * cols);
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            std::vector<float> vec(vec_len);
+            file.read(reinterpret_cast<char*>(vec.data()), vec_len * sizeof(float));
+            label_data.emplace_back(std::move(vec));
+        }
+    }
+
+    std::vector<Eigen::Vector3d> pc_points; // store the 3D points for creating the pointcloud
+    std::vector<std::vector<float>> labels; // store the labels that aren't tossed
+
+    int num_rows = depth_mat.size().height;
+    int num_cols = depth_mat.size().width;
+
+    for (size_t u = 0; u < num_rows; u++) {
+        for (size_t v = 0; v < num_cols; v++) {
+            size_t i = num_cols * u + v;
+            size_t i_label = cols * u + v;
+
+            float d = depth_data[i];
+
+            if (d <= 0 || std::isnan(d)) continue;
+            if (d > max_range || d < min_range) continue; // Skip if out of range
+
+            float x_norm = (v - cx) / fx;
+            float y_norm = (u - cy) / fy;
+
+            // Depth value as Euclidean distance, need to convert
+            float norm_squared = x_norm * x_norm + y_norm * y_norm + 1.0f;
+            float z = d / std::sqrt(norm_squared);
+
+            float x = x_norm * z;
+            float y = y_norm * z;
+
+            Eigen::Vector3d p {x, y, z};
+
+            pc_points.push_back(p);
+            labels.emplace_back(label_data[i_label]);
+        }
+    }
 
     open3d::geometry::PointCloud pc = open3d::geometry::PointCloud(pc_points);
     std::vector<Eigen::Vector3d> points = pc.points_;
@@ -243,12 +324,12 @@ std::vector<Eigen::Matrix4d> GetGTPoses(const fs::path& poses_file, const fs::pa
 }  // namespace 
 namespace datasets {
 
-SceneNetDataset::SceneNetDataset(const std::string& scenenet_root_dir,
+template <slimvdb::Language L>
+SceneNetDataset<L>::SceneNetDataset(const std::string& scenenet_root_dir,
                            const std::string& sequence,
                            int n_scans,
                            bool rgbd) {
     rgbd_ = rgbd;
-    // TODO: to be completed
     auto scenenet_root_dir_ = fs::absolute(fs::path(scenenet_root_dir));
     auto scenenet_sequence_dir = fs::absolute(fs::path(scenenet_root_dir) / "train/" / sequence);
 
@@ -258,35 +339,36 @@ SceneNetDataset::SceneNetDataset(const std::string& scenenet_root_dir,
     scan_files_ = GetDepthFiles(fs::absolute(scenenet_sequence_dir / "depth/"), n_scans);
 }
 
-SceneNetDataset::SceneNetDataset(const std::string& scenenet_root_dir,
-                           const std::string& sequence,
-                           int n_scans,
-                           bool apply_pose,
-                           bool preprocess,
-                           float min_range,
-                           float max_range,
-                           bool rgbd,
-                           bool realtime_segmentation)
-    : apply_pose_(apply_pose),
-      preprocess_(preprocess),
-      min_range_(min_range),
-      max_range_(max_range),
-      rgbd_(rgbd),
-      realtime_segmentation_(realtime_segmentation) {
+template <slimvdb::Language L>
+SceneNetDataset<L>::SceneNetDataset(const std::string& scenenet_root_dir,
+                                 const std::string& sequence,
+                                 int n_scans,
+                                 bool apply_pose,
+                                 bool preprocess,
+                                 float min_range,
+                                 float max_range,
+                                 bool rgbd,
+                                 bool realtime_segmentation)
+    : apply_pose_(apply_pose), preprocess_(preprocess), min_range_(min_range), max_range_(max_range), rgbd_(rgbd), realtime_segmentation_(realtime_segmentation) {
     auto scenenet_root_dir_ = fs::absolute(fs::path(scenenet_root_dir));
     scenenet_sequence_dir_ = fs::absolute(fs::path(scenenet_root_dir_) / "train/" / sequence);
 
-    // Read data, cache it inside the class.
+    // Read image/label data
     poses_ = GetGTPoses(scenenet_sequence_dir_ / "poses.txt",
                         scenenet_sequence_dir_ / "intrinsics.txt", rgbd_);
     const fs::path& calib_file = fs::absolute(scenenet_sequence_dir_ / "intrinsics.txt");
     if(rgbd_) {
         depth_files_ = GetDepthFiles(fs::absolute(scenenet_sequence_dir_ / "depth/"), n_scans);
-        if (realtime_segmentation_) {
-            img_files_ = GetImgFiles(fs::absolute(scenenet_sequence_dir_ / "photo/"), n_scans);
+        if constexpr (L == slimvdb::CLOSED) {
+            if (realtime_segmentation_) {
+                img_files_ = GetImgFiles(fs::absolute(scenenet_sequence_dir_ / "photo/"), n_scans);
+            }
+            else {
+                label_files_ = GetImgFiles(fs::absolute(scenenet_sequence_dir_ / "prediction/"), n_scans);
+            }
         }
-        else {
-            label_files_ = GetImgFiles(fs::absolute(scenenet_sequence_dir_ / "prediction/"), n_scans);
+        else { // L == slimvdb::OPEN
+            label_files_ = GetBinLabelFiles(fs::absolute(scenenet_sequence_dir_ / "open_set_labels/"), n_scans);
         }
     }
     else {
@@ -339,7 +421,8 @@ SceneNetDataset::SceneNetDataset(const std::string& scenenet_root_dir,
     }
 }
 
-std::pair<cv::Mat, std::vector<int>> SceneNetDataset::RunInference(const std::string& rgb_path, const std::string& depth_path) const {
+template <slimvdb::Language L>
+std::pair<cv::Mat, std::vector<int>> SceneNetDataset<L>::RunInference(const std::string& rgb_path, const std::string& depth_path) const {
     // Load and preprocess RGB + depth
     cv::Mat img_mat = cv::imread(rgb_path, cv::IMREAD_COLOR);
     cv::cvtColor(img_mat, img_mat, cv::COLOR_BGR2RGB);
@@ -391,26 +474,35 @@ std::pair<cv::Mat, std::vector<int>> SceneNetDataset::RunInference(const std::st
     return {depth_mat, label_data};
 }
 
-std::tuple<std::vector<Eigen::Vector3d>, std::vector<uint32_t>, Eigen::Matrix4d> SceneNetDataset::operator[](int idx) const {
+template <slimvdb::Language L>
+std::tuple<std::vector<Eigen::Vector3d>, typename SceneNetDataset<L>::SemanticLabels, Eigen::Matrix4d> SceneNetDataset<L>::operator[](int idx) const {
     if (rgbd_) {
         auto t1 = std::chrono::high_resolution_clock::now();
 
         std::vector<Eigen::Vector3d> points;
-        std::vector<uint32_t> semantics;
+        using SemanticsT = std::conditional_t<L == slimvdb::CLOSED,
+                                            std::vector<uint32_t>,
+                                            std::vector<std::vector<float>>>;
+        SemanticsT semantics;
 
-        if (realtime_segmentation_) {
-            auto [depth_data, label_data] = RunInference(img_files_[idx], depth_files_[idx]);
-            std::tie(points, semantics) = ReadSceneNetDepthAndPredictLabels(depth_data, label_data, fx_, fy_, cx_, cy_, min_range_, max_range_);
+        if constexpr (L == slimvdb::CLOSED) {
+            if (realtime_segmentation_) {
+                auto [depth_data, label_data] = RunInference(img_files_[idx], depth_files_[idx]);
+                std::tie(points, semantics) = ReadSceneNetDepthAndPredictLabels(depth_data, label_data, fx_, fy_, cx_, cy_, min_range_, max_range_);
+            }
+            else {
+                std::tie(points, semantics) = ReadSceneNetDepthAndLabels(depth_files_[idx], label_files_[idx], fx_, fy_, cx_, cy_, min_range_, max_range_);
+            }
         }
-        else {
-            std::tie(points, semantics) = ReadSceneNetDepthAndLabels(depth_files_[idx], label_files_[idx], fx_, fy_, cx_, cy_, min_range_, max_range_);
+        else { // L == slimvdb::OPEN
+            std::tie(points, semantics) = ReadSceneNetDepthAndBinLabels(depth_files_[idx], label_files_[idx], fx_, fy_, cx_, cy_, min_range_, max_range_);
         }
 
         if (apply_pose_) TransformPoints(points, poses_[idx]);
         auto t2 = std::chrono::high_resolution_clock::now();
 
         std::chrono::duration<double, std::milli> elapsed = t2 - t1;
-        if (idx % 50 == 0 || idx == 299) std::cout << idx << " Preprocess time: " << elapsed.count()/1e3 << " ";
+        if (idx % 50 == 0) std::cout << idx << " Preprocess time: " << elapsed.count()/1e3 << " ";
         return std::make_tuple(points, semantics, poses_[idx]);
     }
     else {
@@ -418,4 +510,8 @@ std::tuple<std::vector<Eigen::Vector3d>, std::vector<uint32_t>, Eigen::Matrix4d>
         exit(0);
     }
 }
+
+template class SceneNetDataset<slimvdb::Language::CLOSED>;
+template class SceneNetDataset<slimvdb::Language::OPEN>;
+
 }  // namespace datasets

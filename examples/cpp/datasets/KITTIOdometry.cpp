@@ -296,12 +296,12 @@ std::vector<Eigen::Matrix4d> GetGTPoses(const fs::path& poses_file, const fs::pa
 }  // namespace 
 namespace datasets {
 
-KITTIDataset::KITTIDataset(const std::string& kitti_root_dir,
+template <slimvdb::Language L>
+KITTIDataset<L>::KITTIDataset(const std::string& kitti_root_dir,
                            const std::string& sequence,
                            int n_scans,
                            bool rgbd) {
     rgbd_ = rgbd;
-    // TODO: to be completed
     auto kitti_root_dir_ = fs::absolute(fs::path(kitti_root_dir));
     auto kitti_sequence_dir = fs::absolute(fs::path(kitti_root_dir) / "sequences" / sequence);
 
@@ -311,7 +311,8 @@ KITTIDataset::KITTIDataset(const std::string& kitti_root_dir,
     scan_files_ = GetVelodyneFiles(fs::absolute(kitti_sequence_dir / "velodyne/"), n_scans);
 }
 
-KITTIDataset::KITTIDataset(const std::string& kitti_root_dir,
+template <slimvdb::Language L>
+KITTIDataset<L>::KITTIDataset(const std::string& kitti_root_dir,
                            const std::string& sequence,
                            int n_scans,
                            bool apply_pose,
@@ -334,19 +335,31 @@ KITTIDataset::KITTIDataset(const std::string& kitti_root_dir,
                         kitti_sequence_dir_ / "calib.txt", rgbd_);
     const fs::path& calib_file = fs::absolute(kitti_sequence_dir_ / "intrinsics.txt");
     if(rgbd_) {
-        depth_files_ = GetDepthFiles(fs::absolute(kitti_sequence_dir_ / "depth_tif/"), n_scans);
-        label_files_ = GetLabelFiles(fs::absolute(kitti_sequence_dir_ / "image_2_labels/"), n_scans);
+        if constexpr (L == slimvdb::CLOSED) {
+            depth_files_ = GetDepthFiles(fs::absolute(kitti_sequence_dir_ / "depth_tif/"), n_scans);
+            label_files_ = GetLabelFiles(fs::absolute(kitti_sequence_dir_ / "image_2_labels/"), n_scans);
+        }
+        else {
+            std::cerr << "ERROR: No implementation for open-set semantics in KITTI." << "\n";
+            exit(0);
+        }
     }
     else {
-        scan_files_ = GetVelodyneFiles(fs::absolute(kitti_sequence_dir_ / "velodyne/"), n_scans);
-        gt_label_files_ = GetGTLabelFiles(fs::absolute(kitti_sequence_dir_ / "velodyne_predictions_txt/"), n_scans);
+        if constexpr (L == slimvdb::CLOSED) {
+            scan_files_ = GetVelodyneFiles(fs::absolute(kitti_sequence_dir_ / "velodyne/"), n_scans);
+            gt_label_files_ = GetGTLabelFiles(fs::absolute(kitti_sequence_dir_ / "velodyne_predictions_txt/"), n_scans);
+        }
+        else {
+            std::cerr << "ERROR: No implementation for open-set semantics in KITTI." << "\n";
+            exit(0);
+        }
     }
 
     // Read image intrinsic parameters
     std::ifstream calib_in(calib_file, std::ios_base::in);
 
     if (!calib_in.is_open()) {
-        std::cerr << "Error: Could not open the file " << calib_file << "\n";
+        std::cerr << "ERROR: Could not open the file " << calib_file << ".\n";
         exit(0);
     }
 
@@ -376,7 +389,8 @@ KITTIDataset::KITTIDataset(const std::string& kitti_root_dir,
     }
 }
 
-std::tuple<std::vector<Eigen::Vector3d>, std::vector<uint32_t>, Eigen::Matrix4d> KITTIDataset::operator[](int idx) const {
+template <slimvdb::Language L>
+std::tuple<std::vector<Eigen::Vector3d>, typename KITTIDataset<L>::SemanticLabels, Eigen::Matrix4d> KITTIDataset<L>::operator[](int idx) const {
     if (rgbd_) {
         auto [points, semantics] = ReadKITTIDepthAndLabels(depth_files_[idx], label_files_[idx], fx_, fy_, cx_, cy_, preprocess_, min_range_, max_range_);
 
@@ -408,4 +422,7 @@ std::tuple<std::vector<Eigen::Vector3d>, std::vector<uint32_t>, Eigen::Matrix4d>
         return std::make_tuple(points, semantics, poses_[idx]);
     }
 }
+
+template class KITTIDataset<slimvdb::Language::CLOSED>;
+
 }  // namespace datasets

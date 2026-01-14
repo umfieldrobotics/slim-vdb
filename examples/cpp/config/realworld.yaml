@@ -29,6 +29,7 @@ prune_interval: 10
 # Reconstruction
 fill_holes: True
 min_weight: 8.0
+p_threshold:  0.1
 
 # RealWorld
 apply_pose: True

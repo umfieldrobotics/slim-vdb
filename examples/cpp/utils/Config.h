@@ -38,6 +38,7 @@ struct SLIMVDBConfig {
     int prune_interval_;
     float min_weight_;
     bool fill_holes_;
+    float p_threshold_;
 
     static inline SLIMVDBConfig LoadFromYAML(const std::string& path) {
         std::ifstream config_file(path, std::ios_base::in);
@@ -48,7 +49,8 @@ struct SLIMVDBConfig {
                                config["space_carving"].as<bool>(),
                                config["prune_interval"].as<int>(),
                                config["min_weight"].as<float>(),
-                               config["fill_holes"].as<bool>()};
+                               config["fill_holes"].as<bool>(),
+                               config["p_threshold"].as<float>()};
     }
 };
 }  // namespace slimvdb

@@ -25,7 +25,6 @@ cmake_minimum_required(VERSION 3.15)
 project(SLIM-VDB VERSION 0.1.6 LANGUAGES CXX)
 
 add_compile_definitions(NANOVDB_USE_CUDA)
-add_compile_definitions(NCLASSES=26)
 
 set(CMAKE_CXX_FLAGS "-g")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)

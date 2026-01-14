@@ -35,6 +35,7 @@
 #include "utils/Config.h"
 #include "utils/Iterable.h"
 #include "utils/Timers.h"
+#include "slimvdb/Config.h"
 
 #include "open3d/Open3D.h"
 
@@ -114,11 +115,11 @@ int main(int argc, char* argv[]) {
 
     // Initialize dataset 
     const auto dataset =
-        datasets::RealWorldDataset(realworld_root_dir, sequence, n_scans, realworld_cfg.apply_pose_,
+        datasets::RealWorldDataset<slimvdb::LANGUAGE>(realworld_root_dir, sequence, n_scans, realworld_cfg.apply_pose_,
                                realworld_cfg.preprocess_, realworld_cfg.min_range_, realworld_cfg.max_range_, realworld_cfg.rgbd_, realworld_cfg.realtime_segmentation_);
 
     fmt::print("Integrating {} scans\n", dataset.size());
-    slimvdb::VDBVolume tsdf_volume(slimvdb_cfg.voxel_size_, slimvdb_cfg.sdf_trunc_,
+    slimvdb::VDBVolume<slimvdb::LANGUAGE> tsdf_volume(slimvdb_cfg.voxel_size_, slimvdb_cfg.sdf_trunc_,
                                      slimvdb_cfg.space_carving_, slimvdb_cfg.min_weight_);
     timers::FPSTimer<10> timer;
     //modification--------------------------------cuda-------------------------------------------------------
@@ -151,7 +152,7 @@ int main(int argc, char* argv[]) {
         // // rot_quat_vec = {0.72983, 0.0400857, 0.680145, -0.0560795};
         // rot_quat_vec = {0.988824, 0.00377469, 0, 0.149042};
 
-        tsdf_volume.Render(origin_vec, rot_quat_vec, index, realworld_cfg.render_img_width_, realworld_cfg.render_img_height_, realworld_cfg.min_range_, realworld_cfg.max_range_);
+        tsdf_volume.Render(origin_vec, rot_quat_vec, index, realworld_cfg.render_img_width_, realworld_cfg.render_img_height_, realworld_cfg.min_range_, realworld_cfg.max_range_, slimvdb_cfg.p_threshold_);
         index++;
         
         timer.toc();
@@ -197,19 +198,15 @@ int main(int argc, char* argv[]) {
     /**
     // Run marching cubes and save a .ply file
     {
-        // for semantics, we will save one mesh for each label--28 in total. the label will be associated with the face. TODO discuss this further
-        // triangles[0-2] is for map, triangles[3] is label?
         timers::ScopeTimer timer("Writing Mesh to disk");
         auto [vertices, triangles, labels] = // labels belong to triangles
             tsdf_volume.ExtractTriangleMesh(slimvdb_cfg.fill_holes_, slimvdb_cfg.min_weight_);
 
-        // TODO: Fix this!
         Eigen::MatrixXd V(vertices.size(), 3);
         for (size_t i = 0; i < vertices.size(); i++) {
             V.row(i) = Eigen::VectorXd::Map(&vertices[i][0], vertices[i].size());
         }
 
-        // TODO: Also this
         // We want a list of matrices, one for each label
         std::map<int, Eigen::MatrixXi> tri_map; // label: (matrix, #elements)
         std::map<int, int32_t> tri_map_sizes; // label: (matrix, #elements)
@@ -242,7 +239,7 @@ int main(int argc, char* argv[]) {
 
     { // Save volume as pointcloud
         timers::ScopeTimer timer("Writing PointCloud to disk");
-        auto [points, labels] = tsdf_volume.ExtractPointCloud(false, slimvdb_cfg.min_weight_);
+        auto [points, labels] = tsdf_volume.ExtractPointCloud(false, slimvdb_cfg.min_weight_, slimvdb_cfg.p_threshold_);
 
         std::ofstream file("realworld.ply");
         if (!file.is_open()) {

@@ -29,12 +29,17 @@
 #include <vector>
 #include <filesystem>
 
+#include "slimvdb/utils/Utils.h"
+#include "slimvdb/Config.h"
+
 namespace datasets {
 
+template <slimvdb::Language L>
 class KITTIDataset {
 public:
     using Point = Eigen::Vector3d;
     using PointCloud = std::vector<Eigen::Vector3d>;
+    using SemanticLabels = std::conditional_t<L == slimvdb::CLOSED, std::vector<uint32_t>, std::vector<std::vector<float>>>;
 
     explicit KITTIDataset(const std::string& kitti_root_dir,
                           const std::string& sequence,
@@ -52,7 +57,7 @@ public:
                           bool realtime_segmentation = false);
 
     /// Returns a point cloud and the origin of the sensor in world coordinate frames
-    [[nodiscard]] std::tuple<PointCloud, std::vector<uint32_t>, Eigen::Matrix4d> operator[](int idx) const;
+    [[nodiscard]] std::tuple<PointCloud, SemanticLabels, Eigen::Matrix4d> operator[](int idx) const;
     [[nodiscard]] std::size_t size() const { if(rgbd_) return depth_files_.size(); else return scan_files_.size(); }
 
 public:

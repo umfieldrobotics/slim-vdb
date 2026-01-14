@@ -24,4 +24,5 @@
 add_library(datasets OBJECT)
 target_sources(datasets PRIVATE KITTIOdometry.cpp SceneNetOdometry.cpp RealWorldOdometry.cpp)
 target_compile_features(datasets PRIVATE cxx_std_17)
+target_include_directories(datasets PRIVATE ${CMAKE_SOURCE_DIR}/../../src)
 target_link_libraries(datasets PUBLIC Eigen3::Eigen Open3D::Open3D ${OpenCV_LIBS} ${TORCH_LIBRARIES})

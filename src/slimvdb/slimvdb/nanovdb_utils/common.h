@@ -19,25 +19,23 @@
 #include <nanovdb/util/GridBuilder.h>
 #include "ComputePrimitives.h"
 
+#include "utils/Utils.h"
+#include "Config.h"
+
 #if defined(NANOVDB_USE_CUDA)
 using BufferT = nanovdb::cuda::DeviceBuffer;
 #else
 using BufferT = nanovdb::HostBuffer;
 #endif
 
-template <int S>
-using LabelGridT = nanovdb::VecXIGrid<S>;
+template <slimvdb::Language L, int S>
+using LabelGridT = std::conditional_t<L == slimvdb::CLOSED, nanovdb::VecXIGrid<S>, nanovdb::VecXFGrid<S>>;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+template <slimvdb::Language L, int S>
+void runNanoVDB(nanovdb::GridHandle<BufferT>& handle, nanovdb::GridHandle<BufferT>& label_handle, nanovdb::GridHandle<BufferT>& weight_handle, nanovdb::GridHandle<BufferT>& beta_handle,
+                int width, int height, BufferT& imageBuffer, int index,
+                const std::vector<double> origin, const std::vector<double> quaternion, const float min_range, const float max_range, const float p_threshold=0.1, const float* embeddings=nullptr, const uint16_t num_open_semantic_classes=0);
 
-extern void runNanoVDB(nanovdb::GridHandle<BufferT>& handle, nanovdb::GridHandle<BufferT>& label_handle, int width, int height, BufferT& imageBuffer, int index, 
-                       const std::vector<double> origin, const std::vector<double> quaternion, const float min_range, const float max_range);
-
-#ifdef __cplusplus
-}
-#endif
 
 inline __hostdev__ uint32_t CompactBy1(uint32_t x)
 {
@@ -70,15 +68,16 @@ inline __hostdev__ void mortonEncode(uint32_t& code, uint32_t x, uint32_t y)
     code = SeparateBy1(x) | (SeparateBy1(y) << 1);
 }
 
-template<int S, typename RenderFn, typename GridT>
-inline float renderImage(bool useCuda, const RenderFn renderOp, int width, int height, float* image, const GridT* grid, const LabelGridT<S>* label_grid)
+template<slimvdb::Language L, int S, typename RenderFn, typename GridT>
+inline float renderImage(bool useCuda, const RenderFn renderOp, int width, int height, float* image,
+                        const GridT* grid, const LabelGridT<L, S>* label_grid, const GridT* weight_grid=nullptr, const LabelGridT<L, S>* beta_grid=nullptr, const float* embeddings=nullptr, const uint16_t num_open_semantic_classes=0)
 {
     using ClockT = std::chrono::high_resolution_clock;
     auto t0 = ClockT::now();
 
     computeForEach(
-        useCuda, width * height, 512, __FILE__, __LINE__, [renderOp, image, grid, label_grid] __hostdev__(int start, int end) {
-            renderOp(start, end, image, grid, label_grid);
+        useCuda, width * height, 512, __FILE__, __LINE__, [renderOp, image, grid, label_grid, weight_grid, beta_grid, embeddings, num_open_semantic_classes] __hostdev__(int start, int end) {
+            renderOp(start, end, image, grid, label_grid, weight_grid, beta_grid, embeddings);
         });
     computeSync(useCuda, __FILE__, __LINE__);
 
@@ -209,8 +208,9 @@ struct CompositeOp
         {225, 229, 194},    // beige (WINDOW)
     };
 
+    // FOR CLOSED-SET
     template <uint16_t S>
-    inline __hostdev__ void operator()(float* outImage, int i, int w, int h, nanovdb::math::VecXi<S>& alpha, float depth, const float k, const float min_range) const
+    inline __hostdev__ void operator()(float* outImage, int i, int w, int h, nanovdb::math::VecXi<S>& alpha, float depth, const float k, const float min_range, const float p_threshold) const
     {
         int offset;
 #if 0
@@ -220,14 +220,23 @@ struct CompositeOp
 #else
         offset = i;
 #endif
-        // maximum a posteriori estimation of dirichlet alpha parameters
-        int max_i = 0;
-        for (int i = 0; i < S; i++) {
-            if (alpha[i] > alpha[max_i]) max_i = i;
+
+        // Posterior predictive evaluation and thresholding
+        float sum = 0.f;
+        for (int i = 0; i < S; ++i) sum += alpha[i];
+
+        int sem_label = 0;
+        for (int i = 1; i < S; ++i) {
+            if (alpha[i] > alpha[sem_label])
+                sem_label = i;
         }
 
-        auto sem_label = max_i;
+        float max_p = alpha[sem_label] / sum;
+        if (max_p < p_threshold)
+            sem_label = 0; // "no class" for uncertain voxels
 
+
+        // Color according to color map and shading factor
         float factor = expf(-k * (depth - min_range));
 
         RGB color;
@@ -238,6 +247,83 @@ struct CompositeOp
         outImage[offset] = (color.r / 255.0);
         outImage[w*h + offset] = (color.g / 255.0);
         outImage[2*w*h + offset] = (color.b / 255.0);
+    }
+
+
+    // FOR OPEN-SET
+    template <uint16_t S>
+    inline __hostdev__ void operator()(float* outImage, int i, int w, int h, nanovdb::math::VecXf<S>& m, float depth, const float k, const float p_threshold,
+                                       const float* embeddings, const float tsdf_weight, const nanovdb::math::VecXf<S>& beta, const uint16_t num_open_semantic_classes) const
+    {
+        int offset;
+#if 0
+        uint32_t x, y;
+        mortonDecode(i, x, y);
+        offset = x + y * w;
+#else
+        offset = i;
+#endif
+
+        float lambda = tsdf_weight;
+        float nu = tsdf_weight / 2;
+
+        // Compute log posterior predictive per class
+        constexpr int MAX_CLASSES = 64;
+        float logp[MAX_CLASSES]; // placeholder because it must be known at compile time
+        float max_logp = -1e30f;
+
+        for (int c = 0; c < num_open_semantic_classes; ++c) {
+            // compute log predictive Student-t likelihood
+            float lp = 0.f;
+            const float dof = 2.0f * nu;
+
+            lp += -0.5f * S * logf(dof * M_PI);
+            for (int j = 0; j < S; ++j) {
+                float s2 = beta[j] * (lambda + 1.0f) / (lambda * nu);
+                float x  = (embeddings[c * S + j] - m[j]) / sqrtf(s2);
+                lp += -0.5f * (dof + 1.f) * log1pf((x * x) / dof);
+                // (dropped constants since they cancel in softmax)
+            }
+            logp[c] = lp;
+            if (lp > max_logp)
+                max_logp = lp;
+        }
+
+        // Softmax normalization for posterior probabilities
+        float denom = 0.f;
+        for (int c = 0; c < num_open_semantic_classes; ++c)
+            denom += expf(logp[c] - max_logp);
+
+        // Most probable class
+        int best_class = 0;
+        float best_prob = 0.0;
+        float p = 0.0;
+        for (int c = 0; c < num_open_semantic_classes; ++c) {
+            p = expf(logp[c] - max_logp) / denom;
+            if (p > best_prob) {
+                best_prob = p;
+                best_class = c;
+            }
+        }
+
+        // Threshold probabilities
+        if (best_prob < p_threshold)
+            best_class = 0; // "unknown"
+
+
+        // Make image for render
+        float min_range = 0.1;
+        float factor = expf(-k * (depth - min_range));
+
+        RGB color;
+
+        color.r = color_map_scenenet[best_class][0];
+        color.g = color_map_scenenet[best_class][1];
+        color.b = color_map_scenenet[best_class][2];
+
+        outImage[offset] = color.r / 255.0;
+        outImage[w*h + offset] = color.g / 255.0;
+        outImage[2*w*h + offset] = color.b / 255.0;
     }
 
     inline __hostdev__ void operator()(float* outImage, int i, int w, int h, int bg) const

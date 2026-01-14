@@ -23,6 +23,7 @@
 pybind11_add_module(slimvdb_pybind slimvdb_pybind.cpp)
 target_compile_options(slimvdb_pybind PRIVATE -Werror -Wall -Wextra)
 target_link_libraries(slimvdb_pybind PRIVATE SLIMVDB::slimvdb)
+target_include_directories(slimvdb_pybind PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../slimvdb)
 
 # PYOPENVDB_SUPPORT is defined only by the existence of the pyopenvdb library.
 find_package(Python COMPONENTS Interpreter)

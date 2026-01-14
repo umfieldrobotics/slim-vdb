@@ -116,8 +116,6 @@ class KITTIOdometryDataset:
     def read_point_cloud(self, idx: int, scan_file: str, config: dict):
         points = np.fromfile(scan_file, dtype=np.float32).reshape((-1, 4))
         points = self._correct_scan(points) if config.correct_scan else points[:, :3]
-        # points = points[np.linalg.norm(points, axis=1) <= config.max_range] # TODO FIX
-        # points = points[np.linalg.norm(points, axis=1) >= config.min_range]
         points = transform_points(points, self.poses[idx]) if config.apply_pose else None
         return points
     

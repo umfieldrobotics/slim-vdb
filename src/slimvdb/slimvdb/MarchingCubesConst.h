@@ -27,6 +27,7 @@
 #pragma once
 
 #include <Eigen/Core>
+#include <memory>
 
 namespace {
 
@@ -335,4 +336,25 @@ const Eigen::Vector4i edge_shift[12] = {
 const int edge_to_vert[12][2] = {
     {0, 1}, {1, 2}, {3, 2}, {0, 3}, {4, 5}, {5, 6}, {7, 6}, {4, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7},
 };
+
+// Taken from <open3d/utility/Eigen.h>
+template <typename T>
+struct hash_eigen {
+    std::size_t operator()(T const& matrix) const {
+        size_t seed = 0;
+        for (int i = 0; i < (int)matrix.size(); i++) {
+            auto elem = *(matrix.data() + i);
+            seed ^= std::hash<typename T::Scalar>()(elem) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        }
+        return seed;
+    }
+};
 }  // unnamed namespace
+
+namespace openvdb {
+static const openvdb::Coord shift[8] = {
+    openvdb::Coord(0, 0, 0), openvdb::Coord(1, 0, 0), openvdb::Coord(1, 1, 0),
+    openvdb::Coord(0, 1, 0), openvdb::Coord(0, 0, 1), openvdb::Coord(1, 0, 1),
+    openvdb::Coord(1, 1, 1), openvdb::Coord(0, 1, 1),
+};
+}
